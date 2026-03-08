@@ -1,0 +1,25 @@
+Name: Matthew Kik
+Date: 7 March 2028
+Environment: Linux/VIM
+How to make project: make
+
+Example of how to run project: ./oss -n 3 -s 3 -t 4.2 -i 0.6
+
+Usage: Program runs a simulated clock to track a Process Control Table and processes shared with a worker file (child process)and the oss.c file. Both files share the same memory with clock time simulated. Program will only accept those arguements above. You can run just -n, it will only run for 60 seconds top regardless of the arguments passed above. Then terminated with shared memory released.  
+
+./oss [-n proc] [-s simul] [-t timeLimitForChildren] [-i interval]
+
+-n proc, sets total number of children to launch.
+-s simul, max number of children running simultaneously.
+-t timeLimit, time limit for childen processes set in seconds e.g 4.5.
+-i interval of seconds for children processes to launch in seconds e.g. 0.5 seconds.
+
+Generative AI used: Claude 
+
+Prompts: I am refactoring my project, just adjust and reduce the old code that is not required in oss.c and worker.c I will rewrite the project.
+ I just need the code that will not run on this project to be removed and introduce my new shared.h variables and structs within oss.c and worker.
+
+Summary: Old code that wasn't required was removed, AI did setup my new clean-up and switch cases. So I can actualyl focus on learning and creating core logic of my code. 
+
+Note: I wanted to move my variables and structs to a shared file to clean up, and keep everything used between both files.
+ I had issues in my project where I created too complex of code, and "spagetti" code. I figured for readability and coding wise it's easier at this point. 
