@@ -50,28 +50,40 @@ int main(int argc, char **argv) {
 	pid_t my_pid = getpid();
 	pid_t parent_pid = getppid();
 
+
+	//Starting status for workers
 	printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n", my_pid, parent_pid, sec, nano);
 	printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
 	printf("--Just Starting\n");
 
 	int messagesReceived = 0;
+	struct mymsg msg; //Called from shared.h
 
-	// Message queue loop
-	// do {
-	//     msgrcv(msqid, ...) — wait for message from oss (mtype == my_pid)
-	//     messagesReceived++;
-	//     check clock: shm_ptr[0] and shm_ptr[1] vs termSec/termNano
-	//     print status with messagesReceived count
-	//     if time to terminate:
-	//         msgsnd(msqid, ...) — send 0 (terminating) with mtype = my_pid + REPLY_OFFSET
-	//         break
-	//     else:
-	//         msgsnd(msqid, ...) — send 1 (still running) with mtype = my_pid + REPLY_OFFSET
-	// } while (1);
+	do {
+		msgrcv(msqid, &msg, sizeof(msg.mtext), my_pid, 0);
+		messagesReceived++;
 
-	printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n", my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
-	printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
-	printf("--Terminating after sending message back to oss after %d received messages.\n", messagesReceived);
+		if (shm_ptr[0] > termSec || (shm_ptr[0] == termSec && shm_ptr[1] >= termNano)) {
+			printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n",
+				my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
+			printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
+			printf("--Terminating after sending message after %d received messages.\n",
+				messagesReceived);
+			msg.mtype = my_pid + REPLY_OFFSET;
+			msg.mtext = 0;
+			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
+			break;
+		}
+		else {
+			printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n",
+				my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
+			printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
+			printf("--%d messages received\n", messagesReceived);
+			msg.mtype = my_pid + REPLY_OFFSET;
+			msg.mtext = 1;
+			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
+		}
+	} while (1);
 
 	shmdt(shm_ptr);
 
