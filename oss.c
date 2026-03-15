@@ -17,7 +17,7 @@ struct PCB processTable[MAX_PROCESSES]; //Struct from shared.h fileld with MAX_P
 struct mymsg msg; // Struct from shared.h
 int shmid;
 int msqid;
-int* shm_ptr;
+int *shm_ptr;
 
 // Cleans up shared memory, message queue, and kills children
 void kill_processes(int sig) {
@@ -32,7 +32,7 @@ void kill_processes(int sig) {
 	exit(1);
 }
 
-void usage(const char* app) {
+void usage(const char *app) {
 	fprintf(stderr, "Usage: %s [-h] [-n proc] [-s simul] [-t timeLimitForChildren] [-i interval] [-f logfile]\n", app);
 	fprintf(stderr, "	-n proc, sets total number of children to launch.\n");
 	fprintf(stderr, "	-s simul, max number of children running simultaneously.\n");
@@ -41,7 +41,7 @@ void usage(const char* app) {
 	fprintf(stderr, "	-f logfile, path to log file for oss output.\n");
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
 
 	signal(SIGALRM, kill_processes);
 	signal(SIGINT, kill_processes);
@@ -52,33 +52,33 @@ int main(int argc, char** argv) {
 	float timeLimit = 0;
 	float interval = 0;
 	srand(time(NULL));
-	char* logfile = NULL;
+	char *logfile = NULL;
 
 	char opt;
 	while ((opt = getopt(argc, argv, "hn:s:t:i:f:")) != -1) {
 		switch (opt) {
-		case 'h':
-			usage(argv[0]);
-			return EXIT_SUCCESS;
-		case 'n':
-			proc = atoi(optarg);
-			break;
-		case 's':
-			simul = atoi(optarg);
-			break;
-		case 't':
-			timeLimit = atof(optarg);
-			break;
-		case 'i':
-			interval = atof(optarg);
-			break;
-		case 'f':
-			logfile = optarg;
-			break;
-		default:
-			printf("Incorrect input, please follow the usage below.\n");
-			usage(argv[0]);
-			return EXIT_FAILURE;
+			case 'h':
+				usage(argv[0]);
+				return EXIT_SUCCESS;
+			case 'n':
+				proc = atoi(optarg);
+				break;
+			case 's':
+				simul = atoi(optarg);
+				break;
+			case 't':
+				timeLimit = atof(optarg);
+				break;
+			case 'i':
+				interval = atof(optarg);
+				break;
+			case 'f':
+				logfile = optarg;
+				break;
+			default:
+				printf("Incorrect input, please follow the usage below.\n");
+				usage(argv[0]);
+				return EXIT_FAILURE;
 		}
 	}
 
@@ -89,8 +89,8 @@ int main(int argc, char** argv) {
 		exit(1);
 	}
 
-	shm_ptr = (int*)shmat(shmid, NULL, 0);
-	if (shm_ptr == (void*)-1) {
+	shm_ptr = (int *)shmat(shmid, NULL, 0);
+	if (shm_ptr == (void *)-1) {
 		fprintf(stderr, "Failed to attach memory\n");
 		exit(1);
 	}
@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
 	}
 
 	// Open log file if specified
-	FILE* logfp = NULL;
+	FILE *logfp = NULL;
 	if (logfile != NULL) {
 		logfp = fopen(logfile, "w");
 		if (logfp == NULL) {
@@ -114,7 +114,7 @@ int main(int argc, char** argv) {
 			exit(1);
 		}
 	}
-
+	
 	// Counting for variables
 	int totalMsg = 0;
 	int total = 0;
@@ -122,9 +122,10 @@ int main(int argc, char** argv) {
 	int lastPrintNano = 0;
 	int lastLaunchSec = 0;
 	int lastLaunchNano = 0;
-	int intervalSec = (int)interval; // Recasting float argument to int
-	int intervalNano = (interval - intervalSec) * NANO_PER_SEC; // Recasting float argument to int
-	int c = 0;
+	int intervalSec = (int)interval;
+	int intervalNano = (interval - intervalSec) * NANO_PER_SEC;
+	int c = 0; 
+	int nextChild = 0; // Round-robin index into processTable
 
 	// Main loop - logic work is in process
 	while (total < proc || c > 0) {
@@ -167,7 +168,7 @@ int main(int argc, char** argv) {
 			if (worker > 0) {
 
 				int endSec = shm_ptr[0] + (rngSec * c);
-				int endNano = shm_ptr[1] + (rngNano * c);
+				int endNano = shm_ptr[1] + (rngNano * c);				
 				if (endNano >= NANO_PER_SEC) {
 					endSec += endNano / NANO_PER_SEC;
 					endNano = endNano % NANO_PER_SEC;
@@ -209,16 +210,61 @@ int main(int argc, char** argv) {
 			lastPrintNano = shm_ptr[1];
 		}
 
-		// Messaging
+		// Round-robin messaging
 		if (c > 0) {
+			// Find next occupied slot
+			int checked = 0;
+			while (!processTable[nextChild].occupied && checked < MAX_PROCESSES) {
+				nextChild = (nextChild + 1) % MAX_PROCESSES;
+				checked++;
+			}
 
+			// Send message to this child
+			msg.mtype = processTable[nextChild].pid;
+			msg.mtext = 1;
+			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
+			totalMsg++;
+			processTable[nextChild].messagesSent++;
 
+			printf("OSS: Sending message to worker %d PID %d at time %d:%d\n",
+				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
+			if (logfp) fprintf(logfp, "OSS: Sending message to worker %d PID %d at time %d:%d\n",
+				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
+
+			// Receive reply
+			msgrcv(msqid, &msg, sizeof(msg.mtext), processTable[nextChild].pid + REPLY_OFFSET, 0);
+
+			printf("OSS: Received message from worker %d PID %d at time %d:%d\n",
+				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
+			if (logfp) fprintf(logfp, "OSS: Received message from worker %d PID %d at time %d:%d\n",
+				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
+
+			// Child wants to terminate
+			if (msg.mtext == 0) {
+				printf("OSS: Worker %d PID %d is planning to terminate.\n",
+					nextChild, processTable[nextChild].pid);
+				if (logfp) fprintf(logfp, "OSS: Worker %d PID %d is planning to terminate.\n",
+					nextChild, processTable[nextChild].pid);
+				waitpid(processTable[nextChild].pid, NULL, 0);
+				processTable[nextChild].occupied = 0;
+				c--;
+			}
+
+			nextChild = (nextChild + 1) % MAX_PROCESSES;
 		}
 
 	}
 
-	// Log oss output to both stdout and logfp, handle this last. 
-
+	// Ending report
+	printf("OSS: All children have terminated.\n");
+	printf("OSS: Total processes launched: %d\n", total);
+	printf("OSS: Total messages sent: %d\n", totalMsg);
+	if (logfp) {
+		fprintf(logfp, "OSS: All children have terminated.\n");
+		fprintf(logfp, "OSS: Total processes launched: %d\n", total);
+		fprintf(logfp, "OSS: Total messages sent: %d\n", totalMsg);
+	}
+	 
 	// Cleanup
 	if (logfp != NULL)
 		fclose(logfp);
