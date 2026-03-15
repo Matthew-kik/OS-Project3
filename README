@@ -1,25 +1,31 @@
 Name: Matthew Kik
-Date: 7 March 2028
-Environment: Linux/VIM
+Date: 8 March 2028
+Environment: Linux/VIM and Visual Studio
 How to make project: make
 
 Example of how to run project: ./oss -n 3 -s 3 -t 4.2 -i 0.6
 
-Usage: Program runs a simulated clock to track a Process Control Table and processes shared with a worker file (child process)and the oss.c file. Both files share the same memory with clock time simulated. Program will only accept those arguements above. You can run just -n, it will only run for 60 seconds top regardless of the arguments passed above. Then terminated with shared memory released.  
+Usage: Program runs a simulated clock to track a Process Control Table, program is instaneous as the clock is "simulated". This program forks child processes who are launched via messaging. Then logs the messaging / child proceess / PCB.     
 
-./oss [-n proc] [-s simul] [-t timeLimitForChildren] [-i interval]
+./oss [-n proc] [-s simul] [-t timeLimitForChildren] [-i interval] [-f logfile path]
 
 -n proc, sets total number of children to launch.
 -s simul, max number of children running simultaneously.
 -t timeLimit, time limit for childen processes set in seconds e.g 4.5.
 -i interval of seconds for children processes to launch in seconds e.g. 0.5 seconds.
+-f logfile, path to log file for oss output. Example, -f logfile.txt
 
 Generative AI used: Claude 
 
 Prompts: I am refactoring my project, just adjust and reduce the old code that is not required in oss.c and worker.c I will rewrite the project.
  I just need the code that will not run on this project to be removed and introduce my new shared.h variables and structs within oss.c and worker.
 
-Summary: Old code that wasn't required was removed, AI did setup my new clean-up and switch cases. So I can actualyl focus on learning and creating core logic of my code. 
+Summary: Old code that wasn't required was removed, AI did setup my new clean-up and switch cases. So I can actually focus on learning and creating core logic of my code. 
+
+Prompt: Current files work perfectly, are there any locations you could clean-up and reduce the lines of code?
+
+Summary: oss.c (302 → 294 lines): Added a logmsg() helper that writes to both stdout and logfp in one call. Eliminated every duplicate printf/fprintf pair throughout the file — the process table print, messaging logs, and ending report are all single calls now.
+worker.c (92 → 88 lines): Collapsed the two identical if/else branches into one — compute done as a flag, print the shared lines once, then only the status message differs. The mtype, mtext, and msgsnd are also unified with a ternary.
 
 Note: I wanted to move my variables and structs to a shared file to clean up, and keep everything used between both files.
  I had issues in my project where I created too complex of code, and "spagetti" code. I figured for readability and coding wise it's easier at this point. 

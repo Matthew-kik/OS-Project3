@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
 		fprintf(stderr, "Error in Child Shared Memory.\n");
 		exit(1);
 	}
-
+	// Pointer for simulated clock
 	int *shm_ptr = (int *)shmat(shm_id, NULL, 0);
 	if (shm_ptr == (void *)-1) {
 		fprintf(stderr, "Shared memory failed\n");
@@ -64,26 +64,22 @@ int main(int argc, char **argv) {
 		msgrcv(msqid, &msg, sizeof(msg.mtext), my_pid, 0);
 		messagesReceived++;
 
-		if (shm_ptr[0] > termSec || (shm_ptr[0] == termSec && shm_ptr[1] >= termNano)) {
-			printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n",
-				my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
-			printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
-			printf("--Terminating after sending message after %d received messages.\n",
-				messagesReceived);
-			msg.mtype = my_pid + REPLY_OFFSET;
-			msg.mtext = 0;
-			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
-			break;
-		}
-		else {
-			printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n",
-				my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
-			printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
+		int done = (shm_ptr[0] > termSec || (shm_ptr[0] == termSec && shm_ptr[1] >= termNano));
+
+		printf("WORKER PID:%d PPID:%d SysClockS: %d SysclockNano: %d\n",
+			my_pid, parent_pid, shm_ptr[0], shm_ptr[1]);
+		printf("TermTimeS: %d TermTimeNano: %d\n", termSec, termNano);
+
+		if (done)
+			printf("--Terminating after sending message after %d received messages.\n", messagesReceived);
+		else
 			printf("--%d messages received\n", messagesReceived);
-			msg.mtype = my_pid + REPLY_OFFSET;
-			msg.mtext = 1;
-			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
-		}
+
+		msg.mtype = my_pid + REPLY_OFFSET;
+		msg.mtext = done ? 0 : 1;
+		msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
+
+		if (done) break;
 	} while (1);
 
 	shmdt(shm_ptr);

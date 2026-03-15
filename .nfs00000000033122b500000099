@@ -23,7 +23,7 @@ int *shm_ptr;
 
 // Cleans up shared memory, message queue, and kills children
 void kill_processes(int sig) {
-	(void)sig; // voided to stop compilier warning, still works. Launched ./oss with -n 20 nothing else, terminated itself after 60 seconds. 
+	(void)sig;
 	for (int i = 0; i < MAX_PROCESSES; i++) {
 		if (processTable[i].occupied) {
 			kill(processTable[i].pid, SIGTERM);
@@ -36,9 +36,9 @@ void kill_processes(int sig) {
 	exit(1);
 }
 
-// Logs to both stdout and log file (ai did this for me) it introduced me to va_lists so I learned something new. 
-FILE *logfp = NULL; // global pointer to log file.
-void logmsg(const char *fmt, ...) { // ... for variable number of arguements
+// Logs to both stdout and log file
+FILE *logfp = NULL;
+void logmsg(const char *fmt, ...) {
 	va_list args;
 	va_start(args, fmt);
 	vprintf(fmt, args);
@@ -176,7 +176,6 @@ int main(int argc, char **argv) {
 				rngNano = rand() % limitNano;
 			pid_t worker = fork();
 
-			// Same logic as project 2, pass the arguements. 
 			if (worker == 0) {
 
 				char secArg[20];
@@ -217,7 +216,7 @@ int main(int argc, char **argv) {
 		}
 
 		// Print process table every 0.5 simulated seconds and after each launch
-		int printTargetSec = lastPrintSec;
+		int printTargetSec = lastPrintSec;:
 		int printTargetNano = lastPrintNano + 500000000;
 		if (printTargetNano >= NANO_PER_SEC) {
 			printTargetSec++;
@@ -239,16 +238,16 @@ int main(int argc, char **argv) {
 			lastPrintNano = shm_ptr[1];
 		}
 
-		// Messaging logic
+		// Round-robin messaging
 		if (c > 0) {
-			// Find next occupied slot.
+			// Find next occupied slot
 			int checked = 0;
 			while (!processTable[nextChild].occupied && checked < MAX_PROCESSES) {
 				nextChild = (nextChild + 1) % MAX_PROCESSES;
 				checked++;
 			}
 
-			// Send message to next child.
+			// Send message to this child
 			msg.mtype = processTable[nextChild].pid;
 			msg.mtext = 1;
 			msgsnd(msqid, &msg, sizeof(msg.mtext), 0);
@@ -258,13 +257,13 @@ int main(int argc, char **argv) {
 			logmsg("OSS: Sending message to worker %d PID %d at time %d:%d\n",
 				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
 
-			// Receive message reply.
+			// Receive reply
 			msgrcv(msqid, &msg, sizeof(msg.mtext), processTable[nextChild].pid + REPLY_OFFSET, 0);
 
 			logmsg("OSS: Received message from worker %d PID %d at time %d:%d\n",
 				nextChild, processTable[nextChild].pid, shm_ptr[0], shm_ptr[1]);
 
-			// Child wants to terminate.
+			// Child wants to terminate
 			if (msg.mtext == 0) {
 				logmsg("OSS: Worker %d PID %d is planning to terminate.\n",
 					nextChild, processTable[nextChild].pid);
