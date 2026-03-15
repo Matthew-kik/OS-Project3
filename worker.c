@@ -12,6 +12,7 @@
 #include "shared.h"
 
 int main(int argc, char **argv) {
+	(void)argc;
 
 	// Attach to shared memory
 	int shm_id = shmget(SHM_KEY, CLOCK_SIZE, 0666);

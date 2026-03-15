@@ -11,6 +11,7 @@
 #include <sys/msg.h>
 #include <sys/wait.h>
 #include <signal.h>
+#include <time.h>
 #include "shared.h"
 
 struct PCB processTable[MAX_PROCESSES]; //Struct from shared.h fileld with MAX_PROCESS = 20.
@@ -21,9 +22,11 @@ int *shm_ptr;
 
 // Cleans up shared memory, message queue, and kills children
 void kill_processes(int sig) {
+	(void)sig;
 	for (int i = 0; i < MAX_PROCESSES; i++) {
 		if (processTable[i].occupied) {
 			kill(processTable[i].pid, SIGTERM);
+			waitpid(processTable[i].pid, NULL, 0);
 		}
 	}
 	shmdt(shm_ptr);
@@ -148,10 +151,15 @@ int main(int argc, char **argv) {
 		}
 
 		if (c < simul && total < proc &&
-			(shm_ptr[0] > launchTargetSec || (shm_ptr[0] == launchTargetSec && shm_ptr[1] >= launchTargetNano))) {
+   			 (total == 0 || (shm_ptr[0] > launchTargetSec || (shm_ptr[0] == launchTargetSec && shm_ptr[1] >= launchTargetNano)))) {
 
-			int rngSec = rand() % (int)timeLimit + 1;
+			int limitSec = (int)timeLimit;
+			int limitNano = (int)((timeLimit - limitSec) * NANO_PER_SEC);
+			int rngSec = rand() % limitSec + 1;
 			int rngNano = rand() % NANO_PER_SEC;
+			// Cap nanoseconds if we hit the max seconds
+			if (rngSec == limitSec && limitNano > 0 && rngNano > limitNano)
+				rngNano = rand() % limitNano;
 			pid_t worker = fork();
 
 			if (worker == 0) {
@@ -161,18 +169,18 @@ int main(int argc, char **argv) {
 				sprintf(secArg, "%d", rngSec);
 				sprintf(nanoArg, "%d", rngNano);
 				execl("./worker", "worker", secArg, nanoArg, NULL);
+				fprintf(stderr, "execl failed\n");
+				_exit(1);
 
 			}
 
 			// Fills process table
 			if (worker > 0) {
 
-				int endSec = shm_ptr[0] + (rngSec * c);
-				int endNano = shm_ptr[1] + (rngNano * c);				
-				if (endNano >= NANO_PER_SEC) {
-					endSec += endNano / NANO_PER_SEC;
-					endNano = endNano % NANO_PER_SEC;
-				}
+				int numChildren = c + 1; // +1 because we haven't incremented c yet
+				long long totalNano = (long long)shm_ptr[1] + ((long long)rngNano * numChildren);
+				int endSec = shm_ptr[0] + (rngSec * numChildren) + (int)(totalNano / NANO_PER_SEC);
+				int endNano = (int)(totalNano % NANO_PER_SEC);
 
 				for (int i = 0; i < 20; i++) {
 					if (!processTable[i].occupied) {
@@ -194,7 +202,13 @@ int main(int argc, char **argv) {
 		}
 
 		// Print process table every 0.5 simulated seconds and after each launch
-		if (shm_ptr[0] > lastPrintSec || (shm_ptr[0] == lastPrintSec && shm_ptr[1] >= lastPrintNano + 500000000)) {
+		int printTargetSec = lastPrintSec;
+		int printTargetNano = lastPrintNano + 500000000;
+		if (printTargetNano >= NANO_PER_SEC) {
+			printTargetSec++;
+			printTargetNano -= NANO_PER_SEC;
+		}
+		if (shm_ptr[0] > printTargetSec || (shm_ptr[0] == printTargetSec && shm_ptr[1] >= printTargetNano)) {
 
 			printf("OSS PID: %d SysClockS: %d SysclockNano: %d\n", getpid(), shm_ptr[0], shm_ptr[1]);
 			printf("Process Table:\n");
@@ -204,6 +218,17 @@ int main(int argc, char **argv) {
 				printf("%-10d %-10d %-10d %-10d %-10d %-15d %-15d %-10d\n", i, processTable[i].occupied,
 					processTable[i].pid, processTable[i].startSeconds, processTable[i].startNano,
 					processTable[i].endingTimeSeconds, processTable[i].endingTimeNano, processTable[i].messagesSent);
+			}
+			if (logfp) {
+				fprintf(logfp, "OSS PID: %d SysClockS: %d SysclockNano: %d\n", getpid(), shm_ptr[0], shm_ptr[1]);
+				fprintf(logfp, "Process Table:\n");
+				fprintf(logfp, "%-10s %-10s %-10s %-10s %-10s %-15s %-15s %-10s\n",
+					"Entry", "Occupied", "PID", "StartS", "StartN", "EndingTimeS", "EndingTimeNano", "MessagesSent");
+				for (int i = 0; i < 20; i++) {
+					fprintf(logfp, "%-10d %-10d %-10d %-10d %-10d %-15d %-15d %-10d\n", i, processTable[i].occupied,
+						processTable[i].pid, processTable[i].startSeconds, processTable[i].startNano,
+						processTable[i].endingTimeSeconds, processTable[i].endingTimeNano, processTable[i].messagesSent);
+				}
 			}
 
 			lastPrintSec = shm_ptr[0];
